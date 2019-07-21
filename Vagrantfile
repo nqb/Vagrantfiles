@@ -1,0 +1,123 @@
+# Configuration variables:
+#
+#     VAGRANT_BOX="debian/stretch64"
+#         Specify the box to use.
+
+# Shell provisionners
+$setup_pkg = <<SCRIPT
+set -o nounset -o pipefail -o errexit
+
+apt-get update
+apt-get install -y rsync
+apt install -y python-future python-ldap python-netaddr \
+                 python-dnspython python-passlib
+apt install -y build-essential python-dev libffi-dev libssl-dev \
+                 libsasl2-dev libldap2-dev python-pip
+apt install -y git
+pip install debops[ansible]
+SCRIPT
+
+$setup_debops = <<SCRIPT
+mkdir -p src
+if ! [ -d src/controller ] ; then
+    debops-init src/controller
+    debops-update
+    sed -i '/ansible_connection=local$/ s/^#//' src/controller/ansible/inventory/hosts
+    vagrant_controller="$(printf "${SSH_CLIENT}\\n" | awk '{print $1}')"
+    mkdir -p "src/controller/ansible/inventory/group_vars/all"
+    mkdir -p "src/controller/ansible/inventory/host_vars/$(hostname)"
+    cat <<EOF >> "src/controller/ansible/inventory/group_vars/all/dhparam.yml"
+---
+
+# Use smaller Diffie-Hellman parameters to speed up test runs
+dhparam__bits: [ '1024' ]
+EOF
+    cat <<EOF >> "src/controller/ansible/inventory/group_vars/all/core.yml"
+---
+
+# Vagrant client detected from \\$SSH_CLIENT variable
+core__ansible_controllers: [ '${vagrant_controller}' ]
+EOF
+else
+  echo "Dir already created, no need to provision"
+fi
+
+debops_projects_dir=/home/vagrant/src
+
+rsync -av /vagrant/ansible/ ${debops_projects_dir}/controller/ansible
+SCRIPT
+
+$provision_vm = <<SCRIPT
+cd ~/src/controller
+# workaround for https://github.com/debops/debops/pull/902
+debops bootstrap
+debops site
+SCRIPT
+
+Vagrant.configure("2") do |config|
+  #config.vm.box = ENV['VAGRANT_BOX'] || 'debian/buster64'
+
+  # override to bypass "Too many symbolic links" with linux-system roles
+  config.vm.synced_folder ".", "/vagrant", type: "rsync", rsync__args: ["--verbose", "--archive", "--delete", "-z"]
+  config.vm.synced_folder "~/git/nqb-gitlab-buildpkg/", "/gitlab-buildpkg", type: "rsync"
+
+  # override to avoid issue with symlink without referent
+  # see https://github.com/hashicorp/vagrant/issues/5471
+  config.vm.synced_folder "~/git/packetfence", "/packetfence", type: "rsync", rsync__args: ["--verbose", "--archive", "--delete", "-z"]
+
+  # disable default rule to use custom port in order to SSH directly from guest (see below)
+  config.vm.network "forwarded_port", guest: 22, host: 2222, id: "ssh", disabled: true
+
+  # use same private key on all machines
+  config.ssh.insert_key = false
+
+  config.vm.define "stretch" do |node|
+    node.vm.box = "debian/stretch64"
+    
+    # set new rule for ssh
+    node.vm.network "forwarded_port", guest: 22, host: 22000, host_ip: "127.0.0.1"
+
+
+    # provisionners specific to Debian
+    node.vm.provision "setup_pkg", type: "shell", inline: $setup_pkg
+    node.vm.provision "setup_debops", type: "shell", inline: $setup_debops, privileged: false
+    node.vm.provision "provision_vm", type: "shell", inline: $provision_vm, privileged: false
+
+    # provisioner use in pipeline
+    # node.vm.provision "run_ci_scripts", type: "shell", path: "/vagrant/, privileged: false
+  end
+
+  config.vm.define "buster" do |node|
+    node.vm.box = "debian/buster64"
+
+    # set new rule for ssh
+    node.vm.network "forwarded_port", guest: 22, host: 22001, host_ip: "127.0.0.1"
+
+    # provisionners specific to Debian
+    node.vm.provision "setup_pkg", type: "shell", inline: $setup_pkg
+    node.vm.provision "setup_debops", type: "shell", inline: $setup_debops, privileged: false
+    node.vm.provision "provision_vm", type: "shell", inline: $provision_vm, privileged: false
+
+    # provisioner use in pipeline
+    # node.vm.provision "run_ci_scripts", type: "shell", path: "/vagrant/, privileged: false
+  end
+
+  config.vm.define "centos7" do |node|
+    node.vm.box = "centos/7"
+
+    # set new rule for ssh
+    node.vm.network "forwarded_port", guest: 22, host: 22002, host_ip: "127.0.0.1"
+    
+    # provisionners specific to CentOS
+    node.vm.provision "ansible" do |ansible|
+    ansible.playbook = "site.yml"
+    #ansible.config_file = "ansible.cfg"
+    ansible.galaxy_role_file = "requirements.yml"
+    # only for debug
+    #ansible.verbose = "-v"
+    end
+
+    # provisioner use in pipeline
+    # node.vm.provision "run_ci_scripts", type: "shell", path: "/vagrant/, privileged: false
+  end  
+end

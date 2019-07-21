@@ -1,0 +1,6 @@
+---
+apt_install__group_packages:
+  - 'gitlab-buildpkg-tools'
+  - 'tig'
+  - 'tree'
+  - 'lnav'

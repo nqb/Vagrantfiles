@@ -1,0 +1,4 @@
+---
+# List of UNIX accounts which should be added to the docker system group which
+# giving them access to the Docker UNIX socket
+docker_server__admins: [ 'vagrant', 'gitlab-runner' ]

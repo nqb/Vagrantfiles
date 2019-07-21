@@ -1,0 +1,8 @@
+[debops_service_ansible:children]
+debops_all_hosts
+
+[debops_service_gitlab_runner:children]
+debops_all_hosts
+
+[debops_service_docker_server:children]
+debops_all_hosts

@@ -1,0 +1,53 @@
+---
+- hosts: centos7
+  name: Configure centos virtual machines
+  become: True
+
+  roles:
+    - role: linux-system-roles.timesync
+      tags: time
+      vars:
+        timesync_ntp_provider: chrony
+
+    - role: inverse_inc.gitlab_buildpkg_tools
+      tags: ci
+      vars:
+        gitlab_buildpkg_tools__ppa: []
+        gitlab_buildpkg_tools__rpm_deps_repos:
+          - name: gitlab-buildpkg-tools
+            baseurl: https://orange-opensource.gitlab.io/gitlab-buildpkg-tools
+            gpgkey_url: https://orange-opensource.gitlab.io/gitlab-buildpkg-tools/GPG_PUBLIC_KEY
+        gitlab_buildpkg_tools__rpm_built_pkg:
+          - gitlab-buildpkg-tools
+
+    - role: linux-system-roles.selinux
+      tags: selinux
+      # to not fail during provisioning after disabling SELinux
+      ignore_errors: True
+      vars:
+        selinux_state: disabled
+
+  tasks:
+    - name: Set timezone
+      timezone:
+        name: "{{ timezone }}"
+      vars:
+        timezone: Europe/Paris
+    
+    - name: Reboot to disable SELinux
+      reboot:
+
+- hosts: centos7
+  name: install docker and gitlab-runner
+  become: True
+
+  roles:
+    - role: geerlingguy.docker
+      vars:
+        docker_users:
+          - vagrant
+          - gitlab-runner
+      tags: docker
+
+    - role: riemers.gitlab-runner
+      tags: gitlab

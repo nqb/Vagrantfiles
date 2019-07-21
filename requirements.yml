@@ -1,0 +1,7 @@
+---
+- src: linux-system-roles.timesync
+- src: linux-system-roles.selinux
+- src: riemers.gitlab-runner
+- src: geerlingguy.docker
+- src: inverse_inc.gitlab_buildpkg_tools
+

@@ -1,0 +1,11 @@
+---
+# install GPG key for gitlab-buildpkg-tools
+apt__group_keys:
+  - url: 'http://orange-opensource.gitlab.io/gitlab-buildpkg-tools/GPG_PUBLIC_KEY'
+    state: present
+
+# install gitlab-buildpkg-tools repo
+apt__group_repositories:
+  - repo: 'deb [arch=amd64] http://Orange-OpenSource.gitlab.io/gitlab-buildpkg-tools/debian stretch main'
+    filename: gitlab-Orange-OpenSource-gitlab-buildpkg-tools
+    
